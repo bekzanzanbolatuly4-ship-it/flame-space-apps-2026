@@ -1,0 +1,65 @@
+import { test, expect } from "@playwright/test";
+
+test("optional FLEX learning mission connects prediction, live model curves, explanation and verification", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  await page.goto("/");
+  const mission = page.getByRole("region", { name: "Optional learning mission" });
+  await mission.getByRole("button", { name: /Begin mission/ }).click();
+  const activeMission = page.getByRole("region", { name: "Interactive FLEX learning mission" });
+  await expect(activeMission).toContainText("PREDICT");
+  await activeMission.getByRole("button", { name: /Flame-envelope radius/ }).click();
+  await expect(activeMission.getByRole("button", { name: "Lock prediction" })).toBeEnabled();
+  await expect(activeMission).not.toContainText("D² = D₀² − Kt");
+  await activeMission.getByRole("button", { name: "Lock prediction" }).click();
+
+  await expect(activeMission).toContainText("EXPLORE");
+  await expect(activeMission.getByRole("img", { name: /Conditional slide 10 scenario curves/ })).toBeVisible();
+  await expect(activeMission.locator(".mission-curve")).toHaveCount(2);
+  await expect(activeMission).toContainText("NOT OBSERVED TIME SERIES");
+  await expect(activeMission).toContainText("CONDITIONAL SLIDE 10 SCENARIO");
+  await expect(activeMission).toContainText("source conflict is unresolved");
+  const sceneCanvas = page.locator(".flex-render-surface canvas");
+  const timelinePanel = page.getByRole("region", { name: "Conditional FLEX-145 slide 10 scenario timeline" });
+  const sceneBounds = await sceneCanvas.evaluate((canvas) => canvas.getBoundingClientRect().toJSON());
+  const visualBounds = await page.locator(".experiment-visual").evaluate((visual) => visual.getBoundingClientRect().toJSON());
+  const timelineBounds = await timelinePanel.evaluate((panel) => panel.getBoundingClientRect().toJSON());
+  const viewportWidth = await page.evaluate(() => window.innerWidth);
+  expect(sceneBounds.width).toBeGreaterThan(0);
+  expect(sceneBounds.height).toBeGreaterThan(0);
+  expect(sceneBounds.bottom).toBeLessThanOrEqual(timelineBounds.top + 3);
+  expect(visualBounds.right).toBeLessThanOrEqual(viewportWidth);
+  const scrubber = page.getByLabel("Scrub FLEX-145 model time");
+  const duration = Number(await scrubber.getAttribute("max"));
+  await scrubber.evaluate((element: HTMLInputElement, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    setter.call(element, String(value));
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }, duration / 2);
+  await expect(activeMission.getByRole("button", { name: "Reveal the relationship" })).toBeEnabled();
+  await activeMission.getByRole("button", { name: "Reveal the relationship" }).click();
+
+  await expect(activeMission).toContainText("D² = D₀² − Kt");
+  await expect(activeMission).toContainText("illustrative and does not change with it");
+  await expect(activeMission).toContainText("Flame-envelope radius");
+  await activeMission.getByRole("button", { name: "Check understanding" }).click();
+  await activeMission.getByRole("button", { name: "Droplet diameter", exact: true }).click();
+  await expect(activeMission).toContainText("Not quite");
+  await activeMission.getByRole("button", { name: "Try again" }).click();
+  await activeMission.getByRole("button", { name: "Squared droplet diameter", exact: true }).click();
+  await expect(activeMission).toContainText("Correct. K is the constant slope of D²");
+  await activeMission.getByRole("button", { name: "Finish mission" }).click();
+  await expect(activeMission).toContainText("MISSION COMPLETE");
+  await expect(activeMission).toContainText("slide 9 gives conflicting values");
+  await expect(activeMission.locator('a[href^="https://ntrs.nasa.gov/"]')).toBeVisible();
+  await expect(activeMission.locator('a[href="#physics-limitations"]')).toBeVisible();
+  await activeMission.getByRole("button", { name: "Replay mission" }).click();
+  await expect(activeMission).toContainText("PREDICT");
+  await expect(page.locator(".d2-model-time strong")).toContainText("0.00");
+  await activeMission.getByRole("button", { name: "Close learning mission" }).click();
+  await expect(page.getByRole("region", { name: "Optional learning mission" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play d squared model" })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
