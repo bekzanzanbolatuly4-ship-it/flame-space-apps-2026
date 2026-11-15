@@ -853,3 +853,7 @@ h1 { margin: 0; font-size: clamp(30px, 3.5vw, 47px); line-height: 1.04; letter-s
 @media (prefers-reduced-motion: reduce) {
   .primary-view, .nav-indicator { transition-duration: .01ms !important; }
 }
+
+.bass-flow-strength { display:flex; align-items:center; gap:10px; color:#b9d5df; font-size:9px; }
+.bass-flow-strength input { min-width:50px; flex:1; accent-color:#eea567; }
+.bass-flow-strength small { font-size:7px; max-width:130px; }

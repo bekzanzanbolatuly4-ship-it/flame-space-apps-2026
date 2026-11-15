@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { evidenceRecords } from "@/lib/research/corpus";
+import { retrieveIndividualTests } from "@/lib/research/test-retrieval";
 import { compareEvidence, searchEvidence } from "@/lib/research/engine";
 import type { Evidence, ExperimentId } from "@/lib/research/schema";
 
@@ -17,8 +18,9 @@ export function ResearchWorkbench({ experimentId, detailed, state, onChange }: {
   const searchRef = useRef<HTMLInputElement>(null);
   function focusComparison() { comparisonRef.current?.scrollIntoView({ block: "start" }); comparisonRef.current?.focus({ preventScroll: true }); }
   const result = searchEvidence(state.query, { experimentId: state.scope === "selected" ? experimentId : undefined, compareTo: state.leftId });
-  const left = evidenceRecords.find((r) => r.id === state.leftId)!;
-  const right = evidenceRecords.find((r) => r.id === state.rightId)!;
+  const comparisonRecords = [...evidenceRecords, ...retrieveIndividualTests(`${state.query} ${state.leftId} ${state.rightId}`)];
+  const left = comparisonRecords.find((r) => r.id === state.leftId)!;
+  const right = comparisonRecords.find((r) => r.id === state.rightId)!;
   const comparison = compareEvidence(left, right);
   return <div className="research-workbench">
     <label className="research-field"><span>Search verified evidence</span><input ref={searchRef} type="search" value={state.query} maxLength={600} placeholder="e.g. oxygen, methanol, heat release…" onChange={(event) => onChange({ ...state, query: event.target.value })} /></label>
@@ -41,7 +43,7 @@ export function ResearchWorkbench({ experimentId, detailed, state, onChange }: {
     <section ref={comparisonRef} tabIndex={-1} className="research-comparison" aria-label="Evidence comparison">
       <button type="button" className="text-action" onClick={() => searchRef.current?.focus()}>↑ Back to search</button>
       <h3>Compare evidence</h3><p className="research-caption">The initial and extinction records describe stages of one droplet, but the NASA slides conflict on their values. Quantitative comparison is withheld until the source is resolved.</p>
-      {(["leftId", "rightId"] as const).map((side) => <label className="research-field" key={side}><span>Record {side === "leftId" ? "A" : "B"}</span><select aria-label={`Record ${side === "leftId" ? "A" : "B"}`} value={state[side]} onChange={(event) => onChange({ ...state, [side]: event.target.value })}>{evidenceRecords.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.title}</option>)}</select></label>)}
+      {(["leftId", "rightId"] as const).map((side) => <label className="research-field" key={side}><span>Record {side === "leftId" ? "A" : "B"}</span><select aria-label={`Record ${side === "leftId" ? "A" : "B"}`} value={state[side]} onChange={(event) => onChange({ ...state, [side]: event.target.value })}>{comparisonRecords.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.title}</option>)}</select></label>)}
       <div className="comparison-result" role="status"><strong>{comparison.kind === "quantitative" ? "Within-run quantitative comparison" : "Qualitative comparison only"}</strong>{comparison.delta && <p className="comparison-value">{comparison.delta.value} {comparison.delta.unit}<span>Derived change · B − A</span></p>}<ul>{comparison.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
       {comparison.context.map((context, index) => <div className="comparison-context" key={`${index}-${context.id}`}><strong>{index === 0 ? "A" : "B"} · {context.id}</strong><p>{context.material} · {context.fuel}<br />{context.apparatus}</p><p>{context.finding}</p><a href={context.source.url} target="_blank" rel="noreferrer">Original source ↗</a></div>)}
       <details className="research-details"><summary>Comparison limitations</summary><ul>{comparison.limitations.map((limit) => <li key={limit}>{limit}</li>)}</ul></details>

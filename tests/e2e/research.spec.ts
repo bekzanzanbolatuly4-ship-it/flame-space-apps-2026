@@ -59,7 +59,7 @@ test("AI availability is honest; API handles search, comparison and unsupported 
   expect((await request.post("/api/research", { data: { leftId: "FAKE", rightId: "BASS-HEAT" } })).status()).toBe(400);
   expect((await request.get("/api/research?experiment=unknown")).status()).toBe(400);
   const unsupported = await (await request.post("/api/ask", { data: { experimentId: "bass-ii", question: "What is the fire risk percentage on Mars?" } })).json();
-  expect(unsupported.kind).toBe("insufficient-evidence"); expect(unsupported.sources).toEqual([]);
+  expect(unsupported.kind).toBe("evidence-brief"); expect(unsupported.answer).toContain("no AI answer generated");
   expect((await request.post("/api/ask", { data: { experimentId: "fake", question: "oxygen" } })).status()).toBe(400);
   await page.goto("/");
   await page.getByRole("button", { name: "Ask about this evidence" }).click();
@@ -67,7 +67,8 @@ test("AI availability is honest; API handles search, comparison and unsupported 
     await expect(page.getByRole("dialog")).toContainText("GOOGLE_GENERATIVE_AI_API_KEY");
     await expect(page.getByRole("button", { name: "AI unavailable", exact: true })).toBeDisabled();
     const noKey = await request.post("/api/ask", { data: { experimentId: "flex", question: "methanol extinction diameter" } });
-    expect(noKey.status()).toBe(503);
+    expect(noKey.status()).toBe(200);
+    expect((await noKey.json()).kind).toBe("evidence-brief");
   } else {
     // A live request is only attempted with configured credentials; IDs still validated server-side.
     await page.getByLabel("Your question").fill("What is the methanol extinction diameter?");

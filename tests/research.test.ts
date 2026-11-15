@@ -106,3 +106,45 @@ test("gaps distinguish unavailable corpus evidence from unstudied science", () =
   assert.match(result.gaps.join(" "), /does not mean NASA has not studied/);
   assert.match(searchEvidence("methanol extinction diameter").gaps.join(" "), /uncertainty is unavailable/);
 });
+
+test('explicit FLEX queries override stale selected experiment without losing conflict warnings', () => {
+  for (const query of ['flex', 'FLEX-145', 'methanol droplet']) {
+    const result = searchEvidence(query, { experimentId: 'bass-ii' });
+    assert.notEqual(result.coverage, 'insufficient');
+    assert.ok(result.hits.length);
+    assert.ok(result.hits.every(hit => hit.record.experimentId === 'flex'));
+  }
+  assert.ok(searchEvidence('FLEX-145').hits.every(hit => hit.record.limitations.some(text => /conflict|correction/i.test(text))));
+});
+
+test('individual test retrieval preserves values, missingness, units and primary source', () => {
+  const result = searchEvidence('FLEX-001 initial droplet diameter');
+  assert.equal(result.hits.length, 1);
+  const row = result.hits[0].record;
+  assert.equal(row.measurement?.value, 1.69);
+  assert.equal(row.measurement?.unit, 'mm');
+  assert.match(row.finding, /0.52 mm²\/s/);
+  assert.match(row.source.locator, /printed page 20/);
+  assert.match(row.source.url, /20150023456/);
+  assert.equal(searchEvidence('FLEX-009').hits[0].record.measurement, null);
+  assert.match(searchEvidence('FLEX-009').hits[0].record.finding, /not reported/);
+  assert.equal(searchEvidence('FLEX-999').coverage, 'insufficient');
+  assert.equal(searchEvidence('FLEX-001 exact flame temperature').coverage, 'insufficient');
+  assert.equal(searchEvidence('20CAL08').hits[0].record.id, 'FLEX-001-SUMMARY');
+});
+
+test('provider failure returns cited deterministic findings, never an AI impersonation', async () => {
+  const { evidenceFallback } = await import('../lib/research/answer-fallback.ts');
+  for (const reason of ['AI provider quota reached.', 'AI request timed out.', 'Citation validation failed.']) {
+    const fallback = evidenceFallback(searchEvidence('FLEX-001'), reason);
+    assert.equal(fallback.kind, 'evidence-brief');
+    assert.match(fallback.answer, /no AI answer generated/);
+    assert.match(fallback.answer, /1.69 mm/);
+    assert.ok(fallback.answer.includes(reason));
+    assert.equal(fallback.sources.length, 1);
+  }
+  const unsupported = evidenceFallback(searchEvidence('FLEX-001 exact temperature'), 'Insufficient evidence');
+  assert.match(unsupported.answer, /cannot be fully answered/);
+  const row = searchEvidence('FLEX-001').hits[0].record;
+  assert.throws(() => validateGroundedAnswer({ claims: [{ text: 'Temperature is 999 kelvin.', kind: 'reported-fact', evidenceIds: [row.id] }], limitations: ['No uncertainty supplied.'] }, [row]), /number absent/);
+});

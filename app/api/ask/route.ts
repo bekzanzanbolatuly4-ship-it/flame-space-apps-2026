@@ -1,3 +1,4 @@
+import { evidenceFallback } from "@/lib/research/answer-fallback";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, Output } from "ai";
 import { z } from "zod";
@@ -32,11 +33,11 @@ export async function POST(request: Request) {
 
   const retrieval = searchEvidence(parsed.data.question, { experimentId: parsed.data.experimentId });
   if (retrieval.coverage === "insufficient") {
-    return Response.json({ kind: "insufficient-evidence", answer: "Evidence check · no AI answer generated.\n\n" + retrieval.gaps.join("\n\n"), sources: [], gaps: retrieval.gaps });
+    return Response.json(evidenceFallback(retrieval, "Evidence coverage is insufficient for grounded generation."));
   }
 
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    return Response.json({ error: "AI is not configured. Set GOOGLE_GENERATIVE_AI_API_KEY on the server. GEMINI_MODEL is optional (default: " + DEFAULT_MODEL + ")." }, { status: 503 });
+    return Response.json(evidenceFallback(retrieval, "AI is not configured on this server. The following brief uses indexed NASA evidence only."));
   }
 
   const records = retrieval.hits.map((hit) => hit.record);
@@ -72,13 +73,13 @@ export async function POST(request: Request) {
   } catch (err: unknown) {
     // Surface honest provider errors — no silent fallbacks.
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("FLAME ask failed", { stage: failureStage, errorName: err instanceof Error ? err.name : "UnknownError", reason: failureStage === "grounding" ? msg : undefined });
+    console.error("FLAME ask failed", { stage: failureStage, errorName: err instanceof Error ? err.name : "UnknownError", statusCode: typeof err === "object" && err !== null && "statusCode" in err ? err.statusCode : undefined });
     // Classify error type for client transparency
     const isQuota = /quota|rate.?limit|429/i.test(msg);
     const isDemand = /high demand|overloaded|503|unavailable/i.test(msg);
     const isKey = /api.?key|invalid.?key|403|permission/i.test(msg);
     const isTimeout = /timeout|abort/i.test(msg);
-    const isUnsupportedNumber = /unsupported numerical value/i.test(msg);
+    const isUnsupportedNumber = /unsupported numerical value|number absent from its cited evidence/i.test(msg);
     const isValidation = /foreign id|absent from cited|inline citation|model-generated|unsupported numerical value/i.test(msg);
 
     const clientMsg = isUnsupportedNumber
@@ -95,6 +96,6 @@ export async function POST(request: Request) {
               ? "AI request timed out. No answer was generated."
               : "A validated source-grounded answer could not be generated. Provider failure or invalid citations; no unvalidated answer is shown.";
 
-    return Response.json({ error: clientMsg }, { status: 502 });
+    return Response.json(evidenceFallback(retrieval, clientMsg));
   }
 }

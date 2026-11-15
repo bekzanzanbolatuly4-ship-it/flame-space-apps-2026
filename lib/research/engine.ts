@@ -1,6 +1,8 @@
 import { evidenceRecords, FLEX_145_SOURCE_CONFLICT } from "./corpus.ts";
 import { evidenceSchema, type Evidence, type ExperimentId, type Measurement } from "./schema.ts";
 
+import { retrieveIndividualTests } from "./test-retrieval.ts";
+
 const stopWords = new Set("a an the what which how why when where does do did is are was were be been can could would should for in on of to from and or with about by as at it its this that these those nasa research study studies experiment experiments tell me please reported report show shows explain compare versus vs between results result finding findings much many describe give any there available evidence scientific".split(" "));
 const aliases: Record<string, string> = { o2: "oxygen", co2: "dioxide", co: "monoxide", air: "airflow", ventilation: "airflow", extinction: "extinction", extinguish: "extinction", extinguished: "extinction", extinguishing: "extinction", extinguishment: "extinction", droplets: "droplet", solids: "solid", conditions: "condition", temperatures: "temperature", fuels: "fuel", measurements: "measurement", measured: "measurement", suppressants: "suppressant", suppression: "suppressant", burns: "burning", burn: "burning", sizes: "size", limits: "limit", geometries: "geometry" };
 export function tokenize(value: string): string[] {
@@ -16,7 +18,13 @@ export type SearchResult = { query: string; hits: SearchHit[]; coverage: "suppor
 
 export function searchEvidence(query: string, options: { experimentId?: ExperimentId; compareTo?: string } = {}, records = evidenceRecords): SearchResult {
   const terms = tokenize(query);
-  const scoped = records.filter((r) => !options.experimentId || r.experimentId === options.experimentId);
+  const individual = records === evidenceRecords ? retrieveIndividualTests(query) : [];
+  const exactIds: string[] = query.toUpperCase().match(/\bFLEX-\d{3}\b/g) ?? [];
+  const explicitFlex = individual.length > 0 || /\bflex\b|methanol|droplet/i.test(query);
+  const explicitBass = /\bbass(?:-ii)?\b/i.test(query);
+  const scope = explicitFlex && explicitBass ? undefined : explicitFlex ? "flex" : explicitBass ? "bass-ii" : options.experimentId;
+  const scoped = [...records, ...individual].filter(r => (!scope || r.experimentId === scope)
+    && (!exactIds.length || exactIds.some(id => r.context.runId === id || r.id.startsWith(`${id}-`))));
   const reference = records.find((r) => r.id === options.compareTo);
   const hits = scoped.flatMap((record): SearchHit[] => {
     const indexed = new Set(tokenize(searchable(record)));
@@ -58,9 +66,9 @@ export function searchEvidence(query: string, options: { experimentId?: Experime
 export function detectGaps(query: string, records: Evidence[], coverage: SearchResult["coverage"], unmatched: string[] = []) {
   const gaps = ["Coverage is limited to this curated corpus; absence here does not mean NASA has not studied the question."];
   if (coverage === "insufficient") gaps.push("Insufficient evidence to answer this question from the available records. Related results below are not an answer.");
-  if (unmatched.length) gaps.push(`No indexed evidence for these question terms: ${unmatched.join(", ")}.`);
+  if (unmatched.length) gaps.push(`These query terms did not match the searched records (not a claim that NASA evidence is absent): ${unmatched.join(", ")}.`);
   if (unsupportedPatterns.test(query)) gaps.push("The requested environment, material or safety conclusion is outside this corpus's verified scope.");
-  if (!records.some((r) => r.measurement)) gaps.push("No exact numerical measurements are available in the retrieved records.");
+  if (!records.some((r) => r.measurement)) gaps.push("These retrieved records do not supply exact measurements for the question; individual Data Lab tests can be retrieved by their test identifiers.");
   const missing = [...new Set(records.flatMap((r) => r.missingParameters))];
   if (missing.length) gaps.push(`Missing parameters: ${missing.join("; ")}.`);
   if (records.some((r) => r.measurement?.uncertainty === null)) gaps.push("Numerical uncertainty is unavailable; error bars and statistical significance cannot be calculated.");
