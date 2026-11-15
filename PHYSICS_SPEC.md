@@ -18,7 +18,9 @@ Parameter provenance accompanies each evaluation: slide 10 labels the diameters 
 
 ## Explore rendering connection
 
-Explore samples `evaluateFlex145Droplet` on the playback/scrub timeline. It maps only the modeled droplet radius to display space as `(diameterM / 2) × 140` arbitrary render units per metre. This display factor is a framing choice, not a physical calibration. The combustion envelope remains fixed and explicitly illustrative; no d²-law output changes flame size, color, temperature or structure. Intermediate visual states are model calculations, while the initial and finite extinction diameters are observed FLEX-145 endpoints.
+Explore samples `evaluateFlex145Droplet` on the playback/scrub timeline. It maps only the modeled droplet radius to display space as `(diameterM / 2) × 140` arbitrary render units per metre. This display factor is a framing choice, not a physical calibration. The combustion envelope dimensions remain illustrative and are not derived from the droplet model. Its shader uses the playback phase only to stage small fluctuations and a visual fade near the finite endpoint; this does not predict flame size, color, temperature or structure. Intermediate droplet states are model calculations, while the initial and finite extinction diameters are reported endpoints whose source conflict remains unresolved.
+
+The revised renderer may use subtle warm reflections on the droplet as an illustrative visual cue. This is not an incandescent droplet or a measured temperature response. The flame shell's procedural movement is a visual reconstruction, not a FLEX measurement or a prediction made by the d² law. The optional What-if controls allow only an initial diameter of 2–4.5 mm and effective K of 0.25–0.9 mm²/s; both user inputs are hypothetical. The disputed slide-10 extinction endpoint remains fixed and identified as unresolved in either mode.
 
 ## Assumptions and limitations
 

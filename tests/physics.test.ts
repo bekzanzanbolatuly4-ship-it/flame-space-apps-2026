@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { D2_MODEL_ASSUMPTIONS, evaluateDropletD2, evaluateFlex145Droplet, FLEX_145_D2_PARAMETERS } from "../lib/physics/droplet-d2.ts";
+import { D2_MODEL_ASSUMPTIONS, evaluateDropletD2, evaluateFlex145Droplet, evaluateFlex145WhatIf, FLEX_145_D2_PARAMETERS } from "../lib/physics/droplet-d2.ts";
 
 const illustrative = {
   initialDiameterM: 0.01,
@@ -32,6 +32,19 @@ test("analytical d² solution matches independently calculated intermediate diam
   assert.ok(Math.abs(result.diameterSquaredM2 - (0.01 ** 2 - 2e-6 * 12)) < 1e-18);
   assert.equal(result.modeledDurationSeconds, 48);
   assert.equal(result.normalizedProgress, 0.25);
+});
+
+test("FLEX what-if inputs change model duration and carry hypothetical provenance", () => {
+  const reference = evaluateFlex145WhatIf(0, { initialDiameterMm: 3.33, effectiveRateMm2PerS: 0.448 });
+  const alternate = evaluateFlex145WhatIf(0, { initialDiameterMm: 4, effectiveRateMm2PerS: 0.3 });
+  assert.equal(reference.diameterM, 0.00333);
+  assert.notEqual(reference.modeledDurationSeconds, alternate.modeledDurationSeconds);
+  assert.equal(alternate.provenance[0].category, "illustrative");
+  assert.equal(alternate.provenance[0].sourceStatus, "hypothetical-input");
+  assert.equal(alternate.provenance[1].sourceStatus, "unresolved-source-conflict");
+  assert.equal(alternate.provenance[2].sourceStatus, "hypothetical-input");
+  assert.throws(() => evaluateFlex145WhatIf(0, { initialDiameterMm: 1, effectiveRateMm2PerS: 0.448 }), RangeError);
+  assert.throws(() => evaluateFlex145WhatIf(0, { initialDiameterMm: 3.33, effectiveRateMm2PerS: 2 }), RangeError);
 });
 
 test("model terminates at finite reported extinction and stays there afterward", () => {

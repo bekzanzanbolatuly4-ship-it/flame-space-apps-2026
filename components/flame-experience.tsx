@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import gsap from "gsap";
 import {
-  ArrowDownRight,
   ArrowUpRight,
   AudioLines,
   Check,
@@ -22,11 +21,12 @@ import {
 import { experiments, type ExperimentId } from "@/lib/experiments";
 import { flexTestRecordCount, recordsForExperiment } from "@/lib/research/corpus";
 import { EvidenceCitation, ResearchWorkbench, initialResearchState } from "@/components/research-workbench";
-import { FlexCombustionScene } from "@/components/flex-combustion-scene";
+import { FlexCombustionScene, type FlexModelMode } from "@/components/flex-combustion-scene";
+import { BassIIScene } from "@/components/bass-ii-scene";
 import { FlexDataLab } from "@/components/flex-data-lab";
 import { FlexLearningMission, type MissionCheck, type MissionPrediction, type MissionStage } from "@/components/flex-learning-mission";
 import { FlexSciencePanel } from "@/components/flex-science-panel";
-import { evaluateFlex145Droplet } from "@/lib/physics/droplet-d2";
+import { evaluateFlex145Droplet, evaluateFlex145WhatIf, FLEX_145_D2_PARAMETERS, type Flex145WhatIfInputs } from "@/lib/physics/droplet-d2";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
@@ -54,6 +54,14 @@ export function FlameExperience() {
   const [missionExplored, setMissionExplored] = useState(false);
   const [missionTime, setMissionTime] = useState(0);
   const [modelResetToken, setModelResetToken] = useState(0);
+  const [flexStartToken, setFlexStartToken] = useState(0);
+  const [bassStartToken, setBassStartToken] = useState(0);
+  const [flexModelMode, setFlexModelMode] = useState<FlexModelMode>("nasa");
+  const [flexElapsed, setFlexElapsed] = useState(0);
+  const [whatIfInputs, setWhatIfInputs] = useState<Flex145WhatIfInputs>({
+    initialDiameterMm: FLEX_145_D2_PARAMETERS.initialDiameterM * 1000,
+    effectiveRateMm2PerS: FLEX_145_D2_PARAMETERS.effectiveRateM2PerS * 1e6,
+  });
   const [reducedMotion, setReducedMotion] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -78,7 +86,9 @@ export function FlameExperience() {
   const flexInitial = records.find((record) => record.id === "FLEX-145-INITIAL");
   const flexExtinction = records.find((record) => record.id === "FLEX-145-EXTINCTION");
   const flexRate = records.find((record) => record.id === "FLEX-145-RATE");
-  const flexModeledDuration = evaluateFlex145Droplet(0).modeledDurationSeconds;
+  const flexModeledDuration = flexModelMode === "what-if"
+    ? evaluateFlex145WhatIf(0, whatIfInputs).modeledDurationSeconds
+    : evaluateFlex145Droplet(0).modeledDurationSeconds;
   const startMission = useCallback(() => {
     if (videoRef.current) {
       playbackPosition.current = videoRef.current.currentTime;
@@ -97,6 +107,7 @@ export function FlameExperience() {
     setMissionTime(seconds);
     if (seconds > 0.35) setMissionExplored(true);
   }, []);
+  const handleFlexElapsed = useCallback((seconds: number) => setFlexElapsed(seconds), []);
 
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -351,16 +362,15 @@ export function FlameExperience() {
 
         <div className="scene-grid">
           <div className="visual-column">
-            <div className={`experiment-visual ${experiment.media === "footage" ? "has-footage" : "is-illustration"}`}>
+              <div className={`experiment-visual ${experimentId === "flex" ? "has-footage" : "is-illustration"}`}>
               <div className="visual-plane" ref={visualRef}>
-              {experiment.media === "footage" ? (
-                <>
+                  <div className={experimentId === "flex" ? "flex-view-layer" : "flex-view-layer is-hidden"} aria-hidden={experimentId !== "flex"}>
                   <div className="visual-switch" role="group" aria-label="FLEX visual view">
                     <button type="button" className={flexVisual === "model" ? "active" : ""} aria-pressed={flexVisual === "model"} onClick={() => { videoRef.current?.pause(); setPlaying(false); setFlexVisual("model"); }}>3D reconstruction</button>
                     <button type="button" className={flexVisual === "archive" ? "active" : ""} aria-pressed={flexVisual === "archive"} onClick={() => setFlexVisual("archive")}>NASA footage</button>
                   </div>
                   <div className={flexVisual === "model" ? "flex-model-stage" : "flex-model-stage is-hidden"} aria-hidden={flexVisual !== "model"}>
-                    <FlexCombustionScene active={(activeSection === "explore" || activeSection === "learn") && flexVisual === "model" && missionStage !== "explain" && missionStage !== "verify"} missionExploring={missionStage === "explore"} resetToken={modelResetToken} onModelActivity={handleModelActivity} />
+                    <FlexCombustionScene active={experimentId === "flex" && (activeSection === "explore" || activeSection === "learn") && flexVisual === "model" && missionStage !== "explain" && missionStage !== "verify"} missionExploring={missionStage === "explore"} resetToken={modelResetToken} startToken={flexStartToken} modelMode={flexModelMode} whatIfInputs={whatIfInputs} onModelActivity={handleModelActivity} onElapsedChange={handleFlexElapsed} />
                   </div>
                   {flexVisual === "archive" && <>
                   <Image className="visual-poster" src="/flex-still.jpg" alt="" fill sizes="(max-width: 700px) 100vw, 68vw" loading="eager" fetchPriority="high" />
@@ -386,27 +396,10 @@ export function FlameExperience() {
                     <span>NASA / GSFC</span>
                   </div>
                   </>}
-                </>
-              ) : (
-                <div className="solid-schematic" aria-label="Illustrative diagram of flame spread over a solid fuel sample" role="img">
-                  <div className="schematic-topline"><span>CONCEPTUAL DIAGRAM</span><span>NOT EXPERIMENTAL FOOTAGE</span></div>
-                  <svg viewBox="0 0 720 420" aria-hidden="true" className="schematic-svg">
-                    <defs>
-                      <radialGradient id="glow"><stop stopColor="#ffb454" stopOpacity=".55"/><stop offset="1" stopColor="#ff6a32" stopOpacity="0"/></radialGradient>
-                      <linearGradient id="flame"><stop stopColor="#ffd189"/><stop offset=".48" stopColor="#ff7a40"/><stop offset="1" stopColor="#f34831" stopOpacity=".08"/></linearGradient>
-                    </defs>
-                    <ellipse cx="366" cy="231" rx="194" ry="95" fill="url(#glow)" />
-                    <path d="M226 271c18-45 24-88 58-123 21-22 31-49 37-84 40 34 46 72 36 103 29-29 42-57 48-90 47 47 58 91 40 129 28-13 47-36 58-69 22 34 26 77 7 115-30 57-101 65-154 65-54 0-106-12-130-46Z" fill="url(#flame)" opacity=".9" />
-                    <path d="M151 291h418v37H151z" fill="#79736c"/><path d="M151 291h418" stroke="#f2bc78" strokeWidth="3"/>
-                    <path d="M185 306h350" stroke="#3d3c39" strokeWidth="14" strokeDasharray="3 8"/>
-                    <path d="M150 257h-55m55 0-12-8m12 8-12 8M570 257h55m-55 0 12-8m-12 8 12 8" fill="none" stroke="#d6d0c8" strokeOpacity=".58" strokeWidth="1.5"/>
-                    <path d="M360 79v-31m0 31-6-9m6 9 6-9" fill="none" stroke="#b9b3aa" strokeOpacity=".7"/>
-                  </svg>
-                  <div className="schematic-annotation annotation-flow"><ArrowUpRight size={13}/> variable airflow</div>
-                  <div className="schematic-annotation annotation-fuel"><ArrowDownRight size={13}/> solid fuel sample</div>
-                  <div className="visual-caption"><span>BASS-II · SOLID-FUEL FLAME SPREAD</span><span>SCHEMATIC</span></div>
-                </div>
-              )}
+                  </div>
+                  <div className={experimentId === "bass-ii" ? "bass-view-layer" : "bass-view-layer is-hidden"} aria-hidden={experimentId !== "bass-ii"}>
+                    <BassIIScene active={experimentId === "bass-ii" && activeSection === "explore"} startToken={bassStartToken} />
+                  </div>
               </div>
             </div>
 
@@ -428,6 +421,13 @@ export function FlameExperience() {
                 extinction={flexExtinction}
                 rate={flexRate}
                 modeledDurationSeconds={flexModeledDuration}
+                modelMode={flexModelMode}
+                whatIfInputs={whatIfInputs}
+                elapsedSeconds={flexElapsed}
+                onModelModeChange={setFlexModelMode}
+                onWhatIfChange={setWhatIfInputs}
+                onStartExperiment={() => { setFlexVisual("model"); setFlexStartToken((value) => value + 1); }}
+                onResetReference={() => { setFlexModelMode("nasa"); setWhatIfInputs({ initialDiameterMm: FLEX_145_D2_PARAMETERS.initialDiameterM * 1000, effectiveRateMm2PerS: FLEX_145_D2_PARAMETERS.effectiveRateM2PerS * 1e6 }); setModelResetToken((value) => value + 1); }}
                 onBeginMission={startMission}
                 onOpenDataLab={() => navigateSection("data")}
                 onAsk={() => void openAsk()}
@@ -475,6 +475,12 @@ export function FlameExperience() {
               <span className="source-count"><Radio size={13} /> {experiment.sources.length} PRIMARY SOURCE{experiment.sources.length > 1 ? "S" : ""}</span>
               <button className="ask-button" type="button" onClick={() => void openAsk()}><Sparkles size={14} /> Ask about this evidence</button>
             </div>
+            {mode === "explore" && experimentId === "bass-ii" && <section className="bass-source-brief" aria-label="NASA BASS-II experiment evidence">
+              <span className="science-label">NASA OBSERVATION · BASS-II</span>
+              <p>NASA reports opposed-flow PMMA rod tests with 57.15 mm specimens and rod diameters of 6.35, 9.525 and 12.7 mm. Visualization timing, flame spread and flow direction controls are illustrative.</p>
+              <a href="https://ntrs.nasa.gov/citations/20210011385" target="_blank" rel="noreferrer">NASA/TM-20210011385 · pp. 46–47 ↗</a>
+              <button className="science-action start-experiment-action" type="button" onClick={() => setBassStartToken((value) => value + 1)}>START EXPERIMENT <span aria-hidden="true">▶</span></button>
+            </section>}
             </>}
           </aside>
         </div>

@@ -2,12 +2,21 @@
 
 import type { Evidence } from "@/lib/research/schema";
 import { flexTestRecordCount, FLEX_145_SOURCE_CONFLICT } from "@/lib/research/corpus";
+import { evaluateFlex145WhatIf, type Flex145WhatIfInputs } from "@/lib/physics/droplet-d2";
+import type { FlexModelMode } from "@/components/flex-combustion-scene";
 
 type Props = {
   initial: Evidence;
   extinction: Evidence;
   rate: Evidence;
   modeledDurationSeconds: number;
+  modelMode: FlexModelMode;
+  whatIfInputs: Flex145WhatIfInputs;
+  elapsedSeconds: number;
+  onModelModeChange: (mode: FlexModelMode) => void;
+  onWhatIfChange: (inputs: Flex145WhatIfInputs) => void;
+  onStartExperiment: () => void;
+  onResetReference: () => void;
   onBeginMission: () => void;
   onOpenDataLab: () => void;
   onAsk: () => void;
@@ -18,7 +27,39 @@ function value(record: Evidence) {
   return measurement ? <>{measurement.value.toFixed(3)} <small>{measurement.unit}</small></> : <>Not reported</>;
 }
 
-export function FlexSciencePanel({ initial, extinction, rate, modeledDurationSeconds, onBeginMission, onOpenDataLab, onAsk }: Props) {
+function WhatIfGraph({ inputs, elapsedSeconds }: { inputs: Flex145WhatIfInputs; elapsedSeconds: number }) {
+  const duration = evaluateFlex145WhatIf(0, inputs).modeledDurationSeconds;
+  const points = Array.from({ length: 25 }, (_, index) => evaluateFlex145WhatIf(duration * index / 24, inputs));
+  const diameterAt = (index: number) => {
+    const value = points[index].diameterM * 1000;
+    const low = 1.613;
+    const high = inputs.initialDiameterMm;
+    return 26 + (1 - (value - low) / Math.max(0.001, high - low)) * 18;
+  };
+  const squareAt = (index: number) => {
+    const value = points[index].diameterSquaredM2 * 1e6;
+    const low = 1.613 ** 2;
+    const high = inputs.initialDiameterMm ** 2;
+    return 66 + (1 - (value - low) / Math.max(0.001, high - low)) * 18;
+  };
+  const path = (yAt: (index: number) => number) => points.map((_, index) => `${index === 0 ? "M" : "L"}${(12 + index * 9.8).toFixed(1)},${yAt(index).toFixed(1)}`).join(" ");
+  const cursorX = 12 + Math.max(0, Math.min(1, elapsedSeconds / duration)) * 235;
+  return <div className="what-if-chart-wrap">
+    <div className="what-if-chart-title">MODEL-DERIVED CURVES <span>NOT NASA TIME SERIES</span></div>
+    <svg className="what-if-chart" viewBox="0 0 260 101" role="img" aria-label="Model-derived hypothetical droplet diameter and squared diameter curves">
+      <path d="M12 47H247M12 87H247" className="what-if-grid" />
+      <path d={path(diameterAt)} className="what-if-diameter" />
+      <path d={path(squareAt)} className="what-if-square" />
+      <path d={`M${cursorX.toFixed(1)} 17V91`} className="what-if-cursor" />
+      <text x="12" y="19" className="what-if-axis">D(t) · mm</text>
+      <text x="12" y="60" className="what-if-axis">D(t)² · mm²</text>
+      <text x="12" y="99" className="what-if-axis">0 s</text>
+      <text x="247" y="99" textAnchor="end" className="what-if-axis">{duration.toFixed(1)} s</text>
+    </svg>
+  </div>;
+}
+
+export function FlexSciencePanel({ initial, extinction, rate, modeledDurationSeconds, modelMode, whatIfInputs, elapsedSeconds, onModelModeChange, onWhatIfChange, onStartExperiment, onResetReference, onBeginMission, onOpenDataLab, onAsk }: Props) {
   const source = initial.source;
   const condition = (label: string) => initial.conditions.find((item) => item.label === label)?.value;
 
@@ -72,6 +113,25 @@ export function FlexSciencePanel({ initial, extinction, rate, modeledDurationSec
       <p>{condition("Fuel")} <i /> {condition("Pressure")}</p>
       <p className="science-gas-composition">{condition("Gas composition")}</p>
     </div>
+
+    <section className="flex-interaction-controls" aria-label="FLEX experiment controls">
+      <div className="flex-mode-heading"><span className="science-label">EXPERIMENT CONTROLS</span><div role="group" aria-label="FLEX model mode" className="flex-mode-switch">
+        <button type="button" aria-pressed={modelMode === "nasa"} onClick={() => onModelModeChange("nasa")}>NASA experiment</button>
+        <button type="button" aria-pressed={modelMode === "what-if"} onClick={() => onModelModeChange("what-if")}>What-if model</button>
+      </div></div>
+      {modelMode === "nasa" ? <div className="flex-start-block">
+        <button type="button" className="science-action start-experiment-action" onClick={onStartExperiment}>START EXPERIMENT <span aria-hidden="true">▶</span></button>
+        <span>FLEX-145 slide-10-only conditional scenario · source conflict remains unresolved</span>
+        <small>Drag to rotate · scroll or pinch to zoom · scrub the timeline</small>
+      </div> : <div className="what-if-controls">
+        <p>HYPOTHETICAL PARAMETERS · NOT NASA MEASUREMENTS</p>
+        <label><span>Initial diameter <strong>{whatIfInputs.initialDiameterMm.toFixed(2)} mm</strong></span><input aria-label="Hypothetical initial droplet diameter" type="range" min="2" max="4.5" step="0.05" value={whatIfInputs.initialDiameterMm} onChange={(event) => onWhatIfChange({ ...whatIfInputs, initialDiameterMm: Number(event.target.value) })} /></label>
+        <label><span>Effective d² rate <strong>{whatIfInputs.effectiveRateMm2PerS.toFixed(2)} mm²/s</strong></span><input aria-label="Hypothetical effective burning rate" type="range" min="0.25" max="0.9" step="0.01" value={whatIfInputs.effectiveRateMm2PerS} onChange={(event) => onWhatIfChange({ ...whatIfInputs, effectiveRateMm2PerS: Number(event.target.value) })} /></label>
+        <div className="what-if-derived"><span>MODEL INTERVAL</span><strong>{modeledDurationSeconds.toFixed(2)} s</strong><span>Finite endpoint fixed to disputed slide 10 Dext · 1.613 mm</span></div>
+        <WhatIfGraph inputs={whatIfInputs} elapsedSeconds={elapsedSeconds} />
+        <button type="button" className="what-if-reset" onClick={onResetReference}>Reset to NASA reference inputs</button>
+      </div>}
+    </section>
 
     <div className="flex-source-trace">
       <span className="science-label">NASA SOURCE · {source.id}</span>

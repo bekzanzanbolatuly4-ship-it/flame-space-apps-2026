@@ -2,8 +2,8 @@ import { evidenceRecords } from "../research/corpus.ts";
 
 export type ParameterProvenance = {
   parameter: "initialDiameterM" | "extinctionDiameterM" | "effectiveRateM2PerS";
-  category: "observed" | "derived";
-  sourceStatus: "unresolved-source-conflict";
+  category: "observed" | "derived" | "illustrative";
+  sourceStatus: "unresolved-source-conflict" | "hypothetical-input";
   recordId: string;
   sourceUrl: string;
   locator: string;
@@ -105,4 +105,27 @@ export const FLEX_145_D2_PARAMETERS: Readonly<DropletD2Parameters> = Object.free
 
 export function evaluateFlex145Droplet(elapsedSeconds: number): DropletD2Result {
   return evaluateDropletD2(FLEX_145_D2_PARAMETERS, elapsedSeconds);
+}
+
+export type Flex145WhatIfInputs = { initialDiameterMm: number; effectiveRateMm2PerS: number };
+
+/** Uses the same d² equation and disputed slide-10 extinction endpoint with explicitly hypothetical user inputs. */
+export function evaluateFlex145WhatIf(elapsedSeconds: number, inputs: Flex145WhatIfInputs): DropletD2Result {
+  if (!Number.isFinite(inputs.initialDiameterMm) || inputs.initialDiameterMm < 2 || inputs.initialDiameterMm > 4.5) {
+    throw new RangeError("Hypothetical initial diameter must be between 2 and 4.5 mm.");
+  }
+  if (!Number.isFinite(inputs.effectiveRateMm2PerS) || inputs.effectiveRateMm2PerS < 0.25 || inputs.effectiveRateMm2PerS > 0.9) {
+    throw new RangeError("Hypothetical effective rate must be between 0.25 and 0.9 mm²/s.");
+  }
+  const [initialSource, extinctionSource, rateSource] = FLEX_145_D2_PARAMETERS.provenance;
+  return evaluateDropletD2({
+    initialDiameterM: inputs.initialDiameterMm / 1000,
+    extinctionDiameterM: FLEX_145_D2_PARAMETERS.extinctionDiameterM,
+    effectiveRateM2PerS: inputs.effectiveRateMm2PerS * 1e-6,
+    provenance: [
+      { ...initialSource, category: "illustrative", sourceStatus: "hypothetical-input", recordId: "WHAT-IF-INITIAL-DIAMETER", sourceUrl: "", locator: "User-selected hypothetical input; not a NASA measurement." },
+      extinctionSource,
+      { ...rateSource, category: "illustrative", sourceStatus: "hypothetical-input", recordId: "WHAT-IF-BURNING-RATE", sourceUrl: "", locator: "User-selected hypothetical input; not a NASA measurement." },
+    ],
+  }, elapsedSeconds);
 }
